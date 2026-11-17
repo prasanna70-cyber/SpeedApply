@@ -1,0 +1,12 @@
+{
+ "roles": ["react", "frontend", "python", "devops", "cloud", "aws", "data entry", "hr", "support", "qa", "intern", "trainee"],
+ "india_only": true,
+ "india_terms": ["india", "hyderabad", "bangalore", "bengaluru", "chennai", "pune", "mumbai", "delhi", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "kochi", "coimbatore", "telangana", "karnataka", "maharashtra", "tamil nadu"],
+ "work_modes": ["remote", "hybrid", "onsite"],
+ "fresher_only": true,
+ "companies": [
+  {"name": "Example Greenhouse", "ats": "greenhouse", "token": "REPLACE_ME"},
+  {"name": "Example Lever", "ats": "lever", "token": "REPLACE_ME"},
+  {"name": "Example Ashby", "ats": "ashby", "token": "REPLACE_ME"}
+ ]
+}
