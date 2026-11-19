@@ -1,0 +1,46 @@
+name: job-watcher
+on:
+  schedule:
+    - cron: "*/5 * * * *"      # every 5 min (GitHub's fastest)
+    - cron: "30 15 * * *"      # 9:00 PM IST daily report
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "scan | test | check"
+        default: "scan"
+permissions:
+  contents: write
+concurrency: watcher
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      APPLICANT_PROFILE: ${{ secrets.APPLICANT_PROFILE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Scan
+        run: |
+          if [ "${{ github.event.schedule }}" = "30 15 * * *" ]; then python job_watcher.py --report
+          elif [ "${{ github.event.inputs.mode }}" = "test" ]; then python job_watcher.py --test
+          elif [ "${{ github.event.inputs.mode }}" = "check" ]; then python job_watcher.py --check
+          else python job_watcher.py; fi
+      - name: Install browser (only when there are jobs to apply)
+        if: hashFiles('apply_queue.json') != ''
+        run: pip install playwright && playwright install --with-deps chromium
+      - name: Auto-apply
+        if: hashFiles('apply_queue.json') != ''
+        continue-on-error: true
+        run: python auto_apply.py
+      - name: Anything left goes to Telegram
+        if: hashFiles('apply_queue.json') != ''
+        run: python auto_apply.py --fallback
+      - name: Save state
+        run: |
+          git config user.name "watcher-bot"; git config user.email "bot@users.noreply.github.com"
+          git add -A seen.json log.jsonl 2>/dev/null || true
+          git diff --cached --quiet || (git commit -m "state" && git push)
