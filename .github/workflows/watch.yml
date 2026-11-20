@@ -1,16 +1,22 @@
 name: job-watcher
+
 on:
   schedule:
-    - cron: "*/5 * * * *"      # every 5 min (GitHub's fastest)
+    - cron: "*/15 * * * *"     # every 15 minutes (more reliable on GitHub cron than */5)
     - cron: "30 15 * * *"      # 9:00 PM IST daily report
   workflow_dispatch:
     inputs:
       mode:
         description: "scan | test | check"
         default: "scan"
+
 permissions:
   contents: write
-concurrency: watcher
+
+concurrency:
+  group: watcher
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -20,27 +26,69 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       APPLICANT_PROFILE: ${{ secrets.APPLICANT_PROFILE }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - name: Scan
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install base dependencies
         run: |
-          if [ "${{ github.event.schedule }}" = "30 15 * * *" ]; then python job_watcher.py --report
-          elif [ "${{ github.event.inputs.mode }}" = "test" ]; then python job_watcher.py --test
-          elif [ "${{ github.event.inputs.mode }}" = "check" ]; then python job_watcher.py --check
-          else python job_watcher.py; fi
-      - name: Install browser (only when there are jobs to apply)
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install requests
+
+      - name: Run scan / mode
+        id: scan_step
+        run: |
+          if [ "${{ github.event.schedule }}" = "30 15 * * *" ]; then
+            python job_watcher.py --report
+          elif [ "${{ github.event.inputs.mode }}" = "test" ]; then
+            python job_watcher.py --test
+          elif [ "${{ github.event.inputs.mode }}" = "check" ]; then
+            python job_watcher.py --check
+          else
+            python job_watcher.py
+          fi
+
+      - name: Install browser (only when apply_queue.json exists and is non-empty)
         if: hashFiles('apply_queue.json') != ''
-        run: pip install playwright && playwright install --with-deps chromium
+        run: |
+          python -c "import json, sys; d=json.load(open('apply_queue.json')); sys.exit(0 if d else 1)" && (pip install playwright && playwright install --with-deps chromium) || echo "Queue empty"
+
       - name: Auto-apply
         if: hashFiles('apply_queue.json') != ''
         continue-on-error: true
         run: python auto_apply.py
+
       - name: Anything left goes to Telegram
         if: hashFiles('apply_queue.json') != ''
+        continue-on-error: true
         run: python auto_apply.py --fallback
+
       - name: Save state
         run: |
-          git config user.name "watcher-bot"; git config user.email "bot@users.noreply.github.com"
+          git config user.name "watcher-bot"
+          git config user.email "bot@users.noreply.github.com"
+          rm -f apply_queue.json
           git add -A seen.json log.jsonl 2>/dev/null || true
-          git diff --cached --quiet || (git commit -m "state" && git push)
+          git diff --cached --quiet || (git commit -m "chore: update watcher state [skip ci]" && git push)
+
+      - name: Telegram status ping (every run + on failure)
+        if: always()
+        run: |
+          python -c '
+          import os, urllib.request, urllib.parse, datetime, zoneinfo
+          token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+          chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+          ist = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %I:%M %p IST")
+          status = "${{ job.status }}"
+          event = "${{ github.event_name }}"
+          icon = "🟢" if status == "success" else "🔴"
+          text = f"{icon} Job Watcher ({event})\nStatus: {status.upper()}\nTime: {ist}"
+          if token and chat_id:
+              url = f"https://api.telegram.org/bot{token}/sendMessage"
+              data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+              urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=10)
+          '
