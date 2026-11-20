@@ -270,6 +270,18 @@ def report(cfg):
     notify(cfg, text)
 
 
+def test_bot(cfg):
+    ts = now_ist().strftime("%d %b %Y, %I:%M:%S %p IST")
+    companies_count = len(cfg.get("companies", []))
+    msg = (
+        f"🟢 BOT IS RUNNING & ACTIVE\n"
+        f"Tracked Companies: {companies_count}\n"
+        f"Schedule: Every 15 mins + 9:00 PM IST Daily Report\n"
+        f"Checked at: {ts}"
+    )
+    print("sent" if notify(cfg, msg) else "not sent")
+
+
 if __name__ == "__main__":
     cfg = json.loads((BASE / "config.json").read_text())
     if os.environ.get("TELEGRAM_BOT_TOKEN"):
@@ -281,5 +293,5 @@ if __name__ == "__main__":
     {
         "--check": check,
         "--report": report,
-        "--test": lambda c: print("sent" if notify(c, f"Job watcher test ({now_ist().strftime('%I:%M:%S %p IST')}): Telegram works.") else "not sent"),
+        "--test": test_bot,
     }.get(arg, scan)(cfg)
