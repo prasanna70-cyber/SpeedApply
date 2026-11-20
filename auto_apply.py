@@ -44,7 +44,7 @@ def fetch_cv():
     if CV.exists():
         return True
     try:
-        fid = tg_api("getChat", chat_id=CHAT)["result"]["pinned_message"]["document"]["file_id"]
+        fid = P.get("cv_file_id") or tg_api("getChat", chat_id=CHAT)["result"]["pinned_message"]["document"]["file_id"]
         path = tg_api("getFile", file_id=fid)["result"]["file_path"]
         CV.write_bytes(urllib.request.urlopen(urllib.request.Request(
             f"https://api.telegram.org/file/bot{TOKEN}/{path}", headers=UA), timeout=60).read())
