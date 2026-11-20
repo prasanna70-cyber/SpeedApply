@@ -5,31 +5,53 @@ headless browser, fills every required field from your profile and submits.
 If anything cannot be filled safely (unknown required question, CAPTCHA, code check, error) it does NOT
 guess: it sends a Telegram message with the complete job details so you can apply by hand.
 """
-import json, os, re, sys, urllib.parse, urllib.request
+import json
+import os
+import re
+import sys
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 BASE = Path(__file__).parent
 QUEUE, LOG, CV = BASE / "apply_queue.json", BASE / "log.jsonl", BASE / "cv.pdf"
+IST = ZoneInfo("Asia/Kolkata")
 UA = {"User-Agent": "Mozilla/5.0 (job-watcher)"}
 TOKEN, CHAT = os.environ.get("TELEGRAM_BOT_TOKEN", ""), os.environ.get("TELEGRAM_CHAT_ID", "")
+
 try:
     P = json.loads(os.environ.get("APPLICANT_PROFILE") or "{}")
 except Exception:
     P = {}
+
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-SEL = ("input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=image]):not([type=reset]),"
-       " select, textarea")
+SEL = (
+    "input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=image]):not([type=reset]),"
+    " select, textarea"
+)
+
+
+def now_ist() -> datetime:
+    return datetime.now(IST)
 
 
 # ---------------- telegram ----------------
 def tg(text):
     if not TOKEN or not CHAT:
-        print(text); return
-    data = urllib.parse.urlencode({"chat_id": CHAT, "text": text[:4000], "disable_web_page_preview": "true"}).encode()
+        print(text)
+        return
+    data = urllib.parse.urlencode({
+        "chat_id": CHAT,
+        "text": text[:4000],
+        "disable_web_page_preview": "true",
+    }).encode()
     try:
-        urllib.request.urlopen(urllib.request.Request(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=data, headers=UA), timeout=20).read()
+        urllib.request.urlopen(
+            urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=data, headers=UA),
+            timeout=20,
+        ).read()
     except Exception as e:
         print("[telegram failed]", e)
 
@@ -46,8 +68,9 @@ def fetch_cv():
     try:
         fid = P.get("cv_file_id") or tg_api("getChat", chat_id=CHAT)["result"]["pinned_message"]["document"]["file_id"]
         path = tg_api("getFile", file_id=fid)["result"]["file_path"]
-        CV.write_bytes(urllib.request.urlopen(urllib.request.Request(
-            f"https://api.telegram.org/file/bot{TOKEN}/{path}", headers=UA), timeout=60).read())
+        CV.write_bytes(
+            urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/file/bot{TOKEN}/{path}", headers=UA), timeout=60).read()
+        )
         return True
     except Exception as e:
         print("[cv download failed]", e)
@@ -193,13 +216,20 @@ def apply_url(job):
     return u
 
 
-def details(job, reason=""):
+def details(job, reason="", extra_meta=""):
     desc = (job.get("desc") or "")[:700].strip()
     mail = EMAIL.findall(job.get("desc") or "")
-    return (f"{job['title']} @ {job['company']}\nMode: {job['mode'].upper()}  |  Location: {job['location']}\n"
-            f"Apply link: {apply_url(job)}\nJob page: {job['url']}\n"
-            + (f"Apply email in post: {mail[0]}\n" if mail else "")
-            + (f"Reason: {reason}\n" if reason else "") + f"\nAbout the job:\n{desc}...")
+    ts = now_ist().strftime("%d %b %Y, %I:%M:%S %p IST")
+    return (
+        f"{job['title']} @ {job['company']}\n"
+        f"Mode: {job['mode'].upper()}  |  Location: {job['location'] or 'Not specified'}\n"
+        f"Time: {ts}\n"
+        + (f"{extra_meta}\n" if extra_meta else "")
+        + f"Apply link: {apply_url(job)}\nJob page: {job['url']}\n"
+        + (f"Apply email in post: {mail[0]}\n" if mail else "")
+        + (f"Reason: {reason}\n" if reason else "")
+        + f"\nAbout the job:\n{desc}..."
+    )
 
 
 def read_fields(page):
@@ -239,10 +269,15 @@ def fill_form(page, job):
         try:
             if t == "file":
                 if re.search(r"cover", label, re.I):
-                    if req: missing.append(label or "cover letter file")
+                    if req:
+                        missing.append(label or "cover letter file")
                     continue
                 if re.search(r"resume|cv|attach|upload|^$", label, re.I) or len([x for x in fields if x["type"] == "file"]) == 1:
-                    loc.set_input_files({"name": P.get("resume_name", "Resume.pdf"), "mimeType": "application/pdf", "buffer": CV.read_bytes()})
+                    loc.set_input_files({
+                        "name": P.get("resume_name", "Resume.pdf"),
+                        "mimeType": "application/pdf",
+                        "buffer": CV.read_bytes(),
+                    })
                     filled.append("resume")
                 elif req:
                     missing.append(label or "file upload")
@@ -258,14 +293,17 @@ def fill_form(page, job):
                 if idx is None and any(x["required"] for x in grp):
                     idx = decline_option(opts)
                 if idx is None:
-                    if any(x["required"] for x in grp): missing.append(label)
+                    if any(x["required"] for x in grp):
+                        missing.append(label)
                     continue
                 page.locator(SEL).nth(idx).check(force=True)
-                filled.append(label[:40]); continue
+                filled.append(label[:40])
+                continue
             if t == "checkbox":
                 if re.search(r"agree|consent|acknowledge|privacy|terms|i (have read|confirm|certify|understand)|accurate|true and correct", label, re.I) or req:
                     if re.search(r"agree|consent|acknowledge|privacy|terms|confirm|certify|understand|accurate|read|correct", label, re.I):
-                        loc.check(force=True); filled.append("consent")
+                        loc.check(force=True)
+                        filled.append("consent")
                     else:
                         missing.append(label)
                 continue
@@ -276,23 +314,31 @@ def fill_form(page, job):
                 if idx is None and req:
                     idx = decline_option(opts)
                 if idx is None:
-                    if req: missing.append(label)
+                    if req:
+                        missing.append(label)
                     continue
-                loc.select_option(index=idx); filled.append(label[:40]); continue
-            # text-like
+                loc.select_option(index=idx)
+                filled.append(label[:40])
+                continue
             if f["value"].strip():
                 continue
             ans = answer_for(label, job)
             if not ans:
-                if req: missing.append(label)
+                if req:
+                    missing.append(label)
                 continue
             if f["role"] == "combobox" or f["auto"]:
-                loc.click(); loc.fill(""); loc.type(ans[:40], delay=25); page.wait_for_timeout(900)
+                loc.click()
+                loc.fill("")
+                loc.type(ans[:40], delay=25)
+                page.wait_for_timeout(900)
                 opt = page.locator("[role=option]").first
                 if opt.count() and opt.is_visible():
                     opt.click()
-                filled.append(label[:40]); continue
-            loc.fill(ans); filled.append(label[:40])
+                filled.append(label[:40])
+                continue
+            loc.fill(ans)
+            filled.append(label[:40])
         except Exception as e:
             print(f"[field error] {label}: {str(e)[:100]}")
             if req:
@@ -302,8 +348,11 @@ def fill_form(page, job):
 
 def apply_one(browser, job):
     """returns (status, reason, filled) ; status = applied | dry_run | manual"""
-    ctx = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-                              viewport={"width": 1280, "height": 1800}, locale="en-IN")
+    ctx = browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        viewport={"width": 1280, "height": 1800},
+        locale="en-IN",
+    )
     page = ctx.new_page()
     page.set_default_timeout(15000)
     try:
@@ -317,7 +366,8 @@ def apply_one(browser, job):
             if b.count() == 0:
                 b = page.get_by_role("link", name=re.compile(r"^apply( now| for this job)?$", re.I)).first
             if b.count():
-                b.click(); page.wait_for_timeout(2500)
+                b.click()
+                page.wait_for_timeout(2500)
         if page.locator("input[type=email]").count() == 0:
             return "manual", "no application form found on the page", []
         if page.evaluate(CAPTCHA_JS, False):
@@ -350,21 +400,27 @@ def apply_one(browser, job):
 # ---------------- queue ----------------
 def log_row(job, action):
     with LOG.open("a") as f:
-        f.write(json.dumps({"time": datetime.now().isoformat(timespec="seconds"), "company": job["company"], "title": job["title"],
-                            "url": job["url"], "mode": job["mode"], "action": action}) + "\n")
+        f.write(json.dumps({
+            "time": now_ist().isoformat(timespec="seconds"),
+            "company": job["company"],
+            "title": job["title"],
+            "url": job["url"],
+            "mode": job["mode"],
+            "action": action,
+        }) + "\n")
 
 
 def applied_today():
     if not LOG.exists():
         return 0
-    today = datetime.now().date().isoformat()
+    today = now_ist().date().isoformat()
     n = 0
     for line in LOG.read_text().splitlines():
         try:
             r = json.loads(line)
         except Exception:
             continue
-        if r["time"].startswith(today) and r["action"] == "applied":
+        if r.get("time", "").startswith(today) and r.get("action") == "applied":
             n += 1
     return n
 
@@ -388,25 +444,44 @@ def main():
     if "--fallback" in sys.argv:
         for j in q:
             manual(j, "auto-apply could not run")
-        save_queue([]); return
+        save_queue([])
+        return
+
     from playwright.sync_api import sync_playwright
+
     have_cv = fetch_cv()
-    limit = int(P.get("max_per_day", 15))
+    raw_limit = P.get("max_per_day", 0)
+    limit = int(raw_limit) if raw_limit else 0  # 0 = no limit
+    run_applied = 0
+
     with sync_playwright() as p:
         browser = p.chromium.launch()
         while q:
             job = q[0]
+            today_count = applied_today()
             if not have_cv:
                 manual(job, "CV not found: send your CV PDF to the bot and PIN that message")
-            elif applied_today() >= limit:
+            elif limit > 0 and today_count >= limit:
                 manual(job, f"daily limit of {limit} applications reached")
             else:
                 status, reason, filled = apply_one(browser, job)
                 if status == "applied":
-                    tg("APPLIED (submitted automatically)\n" + details(job) + "\n\nFilled: " + ", ".join(filled[:12]))
+                    run_applied += 1
+                    total_now = today_count + 1
+                    tg(
+                        "APPLIED (submitted automatically)\n"
+                        + details(job, extra_meta=f"Run Count: #{run_applied}  |  Today Total: {total_now}")
+                        + "\n\nFilled: "
+                        + ", ".join(filled[:12])
+                    )
                     log_row(job, "applied")
                 elif status == "dry_run":
-                    tg("DRY RUN - filled, NOT submitted\n" + details(job) + "\n\nFilled: " + ", ".join(filled[:12]))
+                    tg(
+                        "DRY RUN - filled, NOT submitted\n"
+                        + details(job)
+                        + "\n\nFilled: "
+                        + ", ".join(filled[:12])
+                    )
                     log_row(job, "dry_run")
                 else:
                     manual(job, reason)
