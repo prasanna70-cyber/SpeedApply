@@ -1,9 +1,14 @@
 {
- "roles": ["devops", "react.js", "cloud", "aws", "sre", "site reliability", "platform", "kubernetes", "infrastructure", "systems engineer", "support engineer", "intern", "trainee"],
+ "roles": ["devops", "devsecops", "react.js", "cloud", "aws", "sre", "site reliability", "reliability", "platform", "kubernetes", "infrastructure", "systems engineer", "support engineer", "production engineer", "release engineer", "build engineer", "automation engineer", "intern", "internship", "trainee", "graduate", "fresher", "junior", "entry level"],
+ "exclude_titles": ["sales", "account executive", "account manager", "marketing", "recruiter", "recruiting", "talent", "legal", "counsel", "finance", "accountant", "designer", "customer success", "business development", "partnerships", "product manager", "people operations", "hr"],
  "india_only": true,
- "india_terms": ["india", "hyderabad", "bangalore", "bengaluru", "chennai", "pune", "mumbai", "delhi", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "kochi", "coimbatore", "telangana", "karnataka", "maharashtra", "tamil nadu"],
- "work_modes": ["remote", "onsite"],
+ "india_terms": ["india", "hyderabad", "bangalore", "bengaluru", "chennai", "pune", "mumbai", "delhi", "ncr", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "kochi", "coimbatore", "telangana", "karnataka", "maharashtra", "tamil nadu", "andhra pradesh", "ongole", "vijayawada", "visakhapatnam", "vizag", "tirupati", "thiruvananthapuram", "trivandrum", "kerala", "gujarat", "jaipur", "indore", "chandigarh", "mohali", "bhubaneswar", "nagpur", "mysuru", "mysore"],
+ "work_modes": ["remote", "hybrid", "onsite"],
  "experience": "match_profile",
+ "experience_tolerance": 2,
+ "apply_existing": true,
+ "max_queue_per_run": 5,
+ "daily_target": 10,
  "companies": [
   {"name": "Razorpay", "ats": "greenhouse", "token": "razorpaysoftwareprivatelimited"},
   {"name": "Databricks", "ats": "greenhouse", "token": "databricks"},
@@ -32,6 +37,28 @@
   {"name": "Notion", "ats": "ashby", "token": "notion"},
   {"name": "Linear", "ats": "ashby", "token": "linear"},
   {"name": "OpenAI", "ats": "ashby", "token": "openai"},
-  {"name": "Supabase", "ats": "ashby", "token": "supabase"}
+  {"name": "Supabase", "ats": "ashby", "token": "supabase"},
+
+  {"name": "Postman", "ats": "greenhouse", "token": "postman"},
+  {"name": "HashiCorp", "ats": "greenhouse", "token": "hashicorp"},
+  {"name": "Grafana Labs", "ats": "greenhouse", "token": "grafanalabs"},
+  {"name": "Vercel", "ats": "greenhouse", "token": "vercel"},
+  {"name": "Confluent", "ats": "greenhouse", "token": "confluent"},
+  {"name": "Fivetran", "ats": "greenhouse", "token": "fivetran"},
+  {"name": "Samsara", "ats": "greenhouse", "token": "samsara"},
+  {"name": "Druva", "ats": "greenhouse", "token": "druva"},
+  {"name": "Uniphore", "ats": "greenhouse", "token": "uniphore"},
+  {"name": "Innovaccer", "ats": "greenhouse", "token": "innovaccer"},
+  {"name": "BrowserStack", "ats": "greenhouse", "token": "browserstack"},
+  {"name": "Juspay", "ats": "greenhouse", "token": "juspay"},
+  {"name": "Sprinklr", "ats": "greenhouse", "token": "sprinklr"},
+  {"name": "Groww", "ats": "lever", "token": "groww"},
+  {"name": "CleverTap", "ats": "lever", "token": "clevertap"},
+  {"name": "MindTickle", "ats": "lever", "token": "mindtickle"},
+  {"name": "Zeta", "ats": "lever", "token": "zeta"},
+  {"name": "Whatfix", "ats": "lever", "token": "whatfix"},
+  {"name": "Hasura", "ats": "lever", "token": "hasura"},
+  {"name": "Atlan", "ats": "lever", "token": "atlan"},
+  {"name": "ShareChat", "ats": "lever", "token": "sharechat"}
  ]
 }
