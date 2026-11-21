@@ -2,7 +2,9 @@ name: job-watcher
 
 on:
   schedule:
-    - cron: "*/15 * * * *"     # every 15 minutes scan
+    # Scan every 15 minutes, except 15:30 UTC (the daily report run).
+    - cron: "*/15 0-14,16-23 * * *"
+    - cron: "0,15,45 15 * * *"
     - cron: "30 15 * * *"      # 9:00 PM IST daily report
   workflow_dispatch:
     inputs:
@@ -31,6 +33,8 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       APPLICANT_PROFILE: ${{ secrets.APPLICANT_PROFILE }}
+      MODE: ${{ inputs.mode || 'scan' }}
+      SCHEDULE: ${{ github.event.schedule || '' }}
 
     steps:
       - name: Checkout repository
@@ -47,21 +51,25 @@ jobs:
           pip install requests
 
       - name: Run scan / mode
-        id: scan_step
+        id: run_mode
         run: |
-          if [ "${{ github.inputs.mode }}" = "report" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "30 15 * * *" ]; }; then
-            python job_watcher.py --report
-          elif [ "${{ github.inputs.mode }}" = "test" ]; then
-            python job_watcher.py --test
-          elif [ "${{ github.inputs.mode }}" = "check" ]; then
-            python job_watcher.py --check
-          else
-            python job_watcher.py
+          mode="$MODE"
+          if [ "$SCHEDULE" = "30 15 * * *" ]; then
+            mode="report"
           fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+          case "$mode" in
+            report) python job_watcher.py --report ;;
+            test)   python job_watcher.py --test ;;
+            check)  python job_watcher.py --check ;;
+            scan)   python job_watcher.py ;;
+            *) echo "Unsupported mode: $mode" >&2; exit 1 ;;
+          esac
 
       - name: Install browser (only when apply_queue.json exists and is non-empty)
         id: queue_check
-        if: hashFiles('apply_queue.json') != ''
+        if: steps.run_mode.outputs.mode == 'scan' && hashFiles('apply_queue.json') != ''
         run: |
           if python -c "import json, sys; d=json.load(open('apply_queue.json')); sys.exit(0 if d else 1)"; then
             echo "has_items=true" >> "$GITHUB_OUTPUT"
@@ -73,12 +81,12 @@ jobs:
           fi
 
       - name: Auto-apply
-        if: steps.queue_check.outputs.has_items == 'true'
+        if: steps.run_mode.outputs.mode == 'scan' && steps.queue_check.outputs.has_items == 'true'
         continue-on-error: true
         run: python auto_apply.py
 
       - name: Anything left goes to Telegram
-        if: steps.queue_check.outputs.has_items == 'true'
+        if: steps.run_mode.outputs.mode == 'scan' && steps.queue_check.outputs.has_items == 'true'
         continue-on-error: true
         run: python auto_apply.py --fallback
 
@@ -91,7 +99,7 @@ jobs:
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: update watcher state [skip ci]"
-            git pull --rebase origin "${{ github.ref_name }}"
+            git pull --rebase origin "$GITHUB_REF_NAME"
             git push
           fi
 
