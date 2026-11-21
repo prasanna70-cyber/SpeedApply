@@ -24,14 +24,22 @@ SEEN, LOG, QUEUE = BASE / "seen.json", BASE / "log.jsonl", BASE / "apply_queue.j
 IST = ZoneInfo("Asia/Kolkata")
 UA = {"User-Agent": "Mozilla/5.0 (job-watcher)"}
 
-SENIOR = re.compile(r"\b(senior|sr\.?|lead|principal|staff|manager|director|head|architect|vp)\b", re.I)
+SENIOR = re.compile(r"\b(senior|sr\.?|lead|principal|staff|manager|director|head|architect|vp|ii|iii|iv)\b", re.I)
 EXP_A = re.compile(r"(\d{1,2})\s*\+?\s*(?:-|to|\u2013)?\s*\d{0,2}\s*\+?\s*years?[^.]{0,40}experience", re.I)
 EXP_B = re.compile(r"experience[^.]{0,30}?(\d{1,2})\s*\+?\s*(?:-|to|\u2013)?\s*\d{0,2}\s*\+?\s*years?", re.I)
+NO_REGION = re.compile(r"^\W*(remote|anywhere|global|worldwide|flexible|n/?a)?\W*$", re.I)
 
 DEFAULT_INDIA_TERMS = [
     "india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai",
     "mumbai", "delhi", "ncr", "gurugram", "gurgaon", "noida",
-    "kolkata", "ahmedabad", "remote - india", "apac", "ist"
+    "kolkata", "ahmedabad",
+]
+
+# job titles that match a keyword like "cloud" but are not engineering jobs
+DEFAULT_EXCLUDE = [
+    "sales", "account executive", "account manager", "marketing", "recruiter", "recruiting",
+    "talent", "legal", "counsel", "finance", "accountant", "designer", "customer success",
+    "business development", "partnerships", "product manager", "people operations", "hr",
 ]
 
 
@@ -49,6 +57,11 @@ def strip_html(s):
     s = s.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&nbsp;", " ")
     s = re.sub(r"<[^>]+>", " ", s)
     return re.sub(r"\s+", " ", s).strip()
+
+
+def has_word(text, word):
+    """Whole-word match, so 'india' does not match 'Indiana' and 'intern' does not match 'international'."""
+    return re.search(r"(?<![a-z0-9])" + re.escape(word.lower()) + r"(?![a-z0-9])", text.lower()) is not None
 
 
 # ---- fetchers: each returns a list of {id,title,location,url,desc} ----
@@ -97,6 +110,42 @@ def fetch_ashby(token):
 FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby}
 
 
+# ---- profile helpers ----
+def profile():
+    try:
+        return json.loads(os.environ.get("APPLICANT_PROFILE") or "{}")
+    except Exception:
+        return {}
+
+
+def my_years(cfg):
+    try:
+        return float(profile().get("experience_years", cfg.get("experience_years", 0)))
+    except Exception:
+        return 0.0
+
+
+def day_budget():
+    """How many more applications may be queued today (None = no daily limit)."""
+    try:
+        limit = int(profile().get("max_per_day") or 0)
+    except Exception:
+        limit = 0
+    if limit <= 0:
+        return None
+    today = now_ist().date().isoformat()
+    used = 0
+    if LOG.exists():
+        for line in LOG.read_text().splitlines():
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if r.get("time", "").startswith(today) and r.get("action") == "applied":
+                used += 1
+    return max(0, limit - used)
+
+
 # ---- matching ----
 def work_mode(job):
     t = (job["location"] + " " + job["title"] + " " + job["desc"][:1000]).lower()
@@ -108,9 +157,15 @@ def work_mode(job):
 
 
 def in_india(job, cfg):
-    terms = [x.lower() for x in (cfg.get("india_terms") or DEFAULT_INDIA_TERMS)]
-    t = (job["location"] + " " + job["desc"][:2000]).lower()
-    return any(x in t for x in terms)
+    terms = cfg.get("india_terms") or DEFAULT_INDIA_TERMS
+    loc = job["location"].lower()
+    if any(has_word(loc, t) for t in terms):
+        return True
+    # location empty or just "Remote": look at the title and the start of the description
+    if NO_REGION.match(loc):
+        text = job["title"] + " " + job["desc"][:1500]
+        return any(has_word(text, t) for t in terms)
+    return False
 
 
 def required_years(desc):
@@ -119,18 +174,12 @@ def required_years(desc):
     return max(nums) if nums else None
 
 
-def my_years(cfg):
-    try:
-        profile = json.loads(os.environ.get("APPLICANT_PROFILE") or "{}")
-        return float(profile.get("experience_years", cfg.get("experience_years", 0)))
-    except Exception:
-        return 0.0
-
-
 def matches(job, cfg):
-    title = job["title"].lower()
+    title = job["title"]
     roles = cfg.get("roles") or []
-    if roles and not any(r.lower() in title for r in roles):
+    if roles and not any(has_word(title, r) for r in roles):
+        return False
+    if any(has_word(title, x) for x in cfg.get("exclude_titles", DEFAULT_EXCLUDE)):
         return False
     if cfg.get("india_only", True) and not in_india(job, cfg):
         return False
@@ -139,10 +188,11 @@ def matches(job, cfg):
         return False
     if cfg.get("experience", "match_profile") == "match_profile":
         mine = my_years(cfg)
+        tol = float(cfg.get("experience_tolerance", 1))
         need = required_years(job["desc"])
-        if need is not None and need > mine + 1:
+        if need is not None and need > mine + tol:
             return False
-        if mine < 5 and SENIOR.search(job["title"]):
+        if mine < 5 and SENIOR.search(title):
             return False
     return True
 
@@ -181,6 +231,13 @@ def scan(cfg):
     seen = set(json.loads(SEEN.read_text())) if SEEN.exists() else set()
     new_seen, queue = set(seen), []
 
+    apply_existing = bool(cfg.get("apply_existing", False))
+    cap = int(cfg.get("max_queue_per_run", 5))
+    if queue_mode:
+        budget = day_budget()
+        if budget is not None:
+            cap = min(cap, budget)
+
     def grab(c):
         try:
             return c, FETCHERS[c["ats"]](c["token"]), None
@@ -200,8 +257,8 @@ def scan(cfg):
             key = prefix + str(j["id"])
             if key in seen:
                 continue
-            new_seen.add(key)
-            if seeding:
+            if seeding and not apply_existing:
+                new_seen.add(key)
                 continue
             j.update(
                 company=c.get("name", c["token"]),
@@ -210,13 +267,19 @@ def scan(cfg):
                 mode=work_mode(j),
             )
             if not matches(j, cfg):
+                new_seen.add(key)
                 continue
+            if len(queue) >= cap:
+                # over this run's limit: leave it unseen so a later run picks it up
+                continue
+            new_seen.add(key)
             ts = now_ist().strftime("%d %b %Y, %I:%M:%S %p IST")
             if queue_mode:
                 j["desc"] = j["desc"][:3000]
                 queue.append(j)
                 print("QUEUED", j["company"], "-", j["title"])
             else:
+                queue.append(j)  # counts toward the per-run cap
                 msg = (
                     f"NEW INDIA JOB [{j['mode'].upper()}]\n"
                     f"Role: {j['title']}\n"
@@ -233,11 +296,11 @@ def scan(cfg):
                     "mode": j["mode"],
                     "action": "notified",
                 })
-        if seeding:
+        if seeding and not apply_existing:
             print(f"[{c['token']}] first time: recorded {len(jobs)} existing jobs, no alerts. New postings will be handled.")
 
     SEEN.write_text(json.dumps(sorted(new_seen)))
-    if queue:
+    if queue and queue_mode:
         QUEUE.write_text(json.dumps(queue))
 
 
@@ -258,12 +321,13 @@ def report(cfg):
     dry = [r for r in rows if r.get("action") == "dry_run"]
     manual = [r for r in rows if r.get("action") not in ("applied", "dry_run")]
     modes = {m: sum(1 for r in rows if r.get("mode") == m) for m in ("remote", "hybrid", "onsite")}
+    target = int(cfg.get("daily_target", 10))
     text = (
         f"Daily IST Report ({today})\n"
-        f"Matched jobs: {len(rows)} (remote {modes['remote']}, hybrid {modes['hybrid']}, onsite {modes['onsite']})\n"
-        f"Auto-applied: {len(applied)}\n"
+        f"Auto-applied: {len(applied)} / target {target}\n"
+        f"Manual needed: {len(manual)}\n"
         f"Dry run: {len(dry)}\n"
-        f"Manual / notified: {len(manual)}\n"
+        f"Matched jobs: {len(rows)} (remote {modes['remote']}, hybrid {modes['hybrid']}, onsite {modes['onsite']})\n"
         + "\n".join(f"- {r['title']} @ {r['company']} -> {r['url']}" for r in manual[:10])
     )
     print(text)
