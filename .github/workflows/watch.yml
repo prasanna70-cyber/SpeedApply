@@ -1,114 +1,20 @@
-name: job-watcher
-
-on:
-  schedule:
-    - cron: "*/15 * * * *"     # every 15 minutes scan
-    - cron: "30 15 * * *"      # 9:00 PM IST daily report
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: "Execution mode"
-        type: choice
-        default: "scan"
-        options:
-          - scan
-          - test
-          - check
-          - report
-
-permissions:
-  contents: write
-
-concurrency:
-  group: watcher
-  cancel-in-progress: false
-
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      APPLICANT_PROFILE: ${{ secrets.APPLICANT_PROFILE }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install base dependencies
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install requests
-
-      - name: Run scan / mode
-        id: scan_step
-        run: |
-          if [ "${{ github.inputs.mode }}" = "report" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "30 15 * * *" ]; }; then
-            python job_watcher.py --report
-          elif [ "${{ github.inputs.mode }}" = "test" ]; then
-            python job_watcher.py --test
-          elif [ "${{ github.inputs.mode }}" = "check" ]; then
-            python job_watcher.py --check
-          else
-            python job_watcher.py
-          fi
-
-      - name: Install browser (only when apply_queue.json exists and is non-empty)
-        id: queue_check
-        if: hashFiles('apply_queue.json') != ''
-        run: |
-          if python -c "import json, sys; d=json.load(open('apply_queue.json')); sys.exit(0 if d else 1)"; then
-            echo "has_items=true" >> "$GITHUB_OUTPUT"
-            pip install playwright
-            playwright install --with-deps chromium
-          else
-            echo "has_items=false" >> "$GITHUB_OUTPUT"
-            echo "Queue empty"
-          fi
-
-      - name: Auto-apply
-        if: steps.queue_check.outputs.has_items == 'true'
-        continue-on-error: true
-        run: python auto_apply.py
-
-      - name: Anything left goes to Telegram
-        if: steps.queue_check.outputs.has_items == 'true'
-        continue-on-error: true
-        run: python auto_apply.py --fallback
-
-      - name: Save state
-        run: |
-          git config user.name "watcher-bot"
-          git config user.email "bot@users.noreply.github.com"
-          rm -f apply_queue.json
-          git add seen.json log.jsonl 2>/dev/null || true
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update watcher state [skip ci]"
-            git pull --rebase origin "${{ github.ref_name }}"
-            git push
-          fi
-
-      - name: Telegram alert if workflow crashes
-        if: failure()
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          python -c '
-          import os, urllib.request, urllib.parse, datetime, zoneinfo
-          token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-          chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-          ist = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %I:%M %p IST")
-          event = os.environ.get("EVENT_NAME", "unknown")
-          run_url = os.environ.get("RUN_URL", "")
-          text = f"🔴 BOT ALERT: Job Watcher Failed ({event})\nTime: {ist}\nLogs: {run_url}"
-          if token and chat_id:
-              url = f"https://api.telegram.org/bot{token}/sendMessage"
-              data = urllib.parse.urlencode({"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}).encode()
-              urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=15)
-          '
+##[group***Run actions/setup-python@v5
+with:
+  python-version: 3.12
+  cache: pip
+  check-latest: false
+  token: ***
+  update-environment: true
+  allow-prereleases: false
+  freethreaded: false
+env:
+  TELEGRAM_BOT_TOKEN: ***
+  TELEGRAM_CHAT_ID: ***
+  APPLICANT_PROFILE: ***
+##[endgroup***
+##[group***Installed versions
+(node:2376) [DEP0040*** DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Successfully set up CPython (3.12.16)
+##[endgroup***
+##[error***No file in /home/runner/work/SpeedApply/SpeedApply matched to [**/requirements.txt or **/pyproject.toml***, make sure you have checked out the target repository
