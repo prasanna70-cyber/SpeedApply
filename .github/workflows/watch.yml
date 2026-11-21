@@ -31,6 +31,7 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       APPLICANT_PROFILE: ${{ secrets.APPLICANT_PROFILE }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,7 +40,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
       - name: Install base dependencies
         run: |
@@ -88,6 +88,7 @@ jobs:
           git config user.email "bot@users.noreply.github.com"
           rm -f apply_queue.json
           git add seen.json log.jsonl 2>/dev/null || true
+
           if ! git diff --cached --quiet; then
             git commit -m "chore: update watcher state [skip ci]"
             git pull --rebase origin "${{ github.ref_name }}"
@@ -108,8 +109,16 @@ jobs:
           event = os.environ.get("EVENT_NAME", "unknown")
           run_url = os.environ.get("RUN_URL", "")
           text = f"🔴 BOT ALERT: Job Watcher Failed ({event})\nTime: {ist}\nLogs: {run_url}"
+
           if token and chat_id:
               url = f"https://api.telegram.org/bot{token}/sendMessage"
-              data = urllib.parse.urlencode({"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}).encode()
-              urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=15)
+              data = urllib.parse.urlencode({
+                  "chat_id": chat_id,
+                  "text": text,
+                  "disable_web_page_preview": "true"
+              }).encode()
+              urllib.request.urlopen(
+                  urllib.request.Request(url, data=data),
+                  timeout=15
+              )
           '
