@@ -1,0 +1,15 @@
+name: get-cv-file-id
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get pinned CV file_id
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChat?chat_id=${TELEGRAM_CHAT_ID}" | python3 -c "import sys, json; d = json.load(sys.stdin); p = d.get('result', {}).get('pinned_message', {}); print('FILE_ID:', p.get('document', {}).get('file_id', 'NOT FOUND'))"
