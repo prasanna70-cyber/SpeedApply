@@ -1,0 +1,92 @@
+name: check-slugs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check company slugs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 - <<'EOF'
+          import os, re, json, urllib.request, urllib.parse
+          from concurrent.futures import ThreadPoolExecutor
+
+          NAMES = ("Razorpay, Postman, Groww, BrowserStack, Databricks, Cloudflare, Datadog, MongoDB, "
+                   "Elastic, GitLab, Okta, Twilio, Grafana Labs, ThoughtSpot, CRED, Meesho, PhonePe, "
+                   "Swiggy, Freshworks, Chargebee, Sprinklr, Innovaccer, Hasura, Atlan, Mindtickle, "
+                   "CleverTap, Whatfix, Darwinbox, Juspay, Pine Labs, Dream11, Nykaa, Rapido, Lenskart, "
+                   "Cars24, Spinny, Zepto, ShareChat, Confluent, HashiCorp, Snowflake, Splunk, New Relic, "
+                   "PagerDuty, Zscaler, Nutanix, Pure Storage, Zoho, LeadSquared, Kapture CX, Vtiger, "
+                   "Kylas, Hiver, Keka, greytHR, ZingHR, HROne, Zimyo, Cashfree Payments, Perfios, Zaggle, "
+                   "HighRadius, Yubi, MoEngage, WebEngage, Netcore Cloud, Exotel, iZooto, Gupshup, "
+                   "Capillary Technologies, Yellow.ai, Appsmith, Druva, Kovai.co, Tally Solutions, "
+                   "Kissflow, Icertis, Zenoti, Vyapar, Leegality, RateGain, Sirion, Rocketlane, Facilio, "
+                   "OfBusiness, Infra.Market, Udaan").split(", ")
+
+          INDIA = ["india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai", "mumbai", "delhi", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "kochi", "visakhapatnam", "vishakhapatnam", "vizag", "andhra", "vijayawada", "guntur", "tirupati", "amaravati", "nellore", "ongole"]
+          URLS = {
+              "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{}/jobs",
+              "lever": "https://api.lever.co/v0/postings/{}?mode=json",
+              "ashby": "https://api.ashbyhq.com/posting-api/job-board/{}",
+          }
+
+          def fetch(url):
+              req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      return json.loads(r.read().decode("utf-8", "ignore"))
+              except Exception:
+                  return None
+
+          def locations(ats, data):
+              if ats == "greenhouse" and isinstance(data, dict) and "jobs" in data:
+                  return [str((j.get("location") or {}).get("name", "")) for j in data["jobs"]]
+              if ats == "lever" and isinstance(data, list):
+                  return [str((j.get("categories") or {}).get("location") or "") for j in data]
+              if ats == "ashby" and isinstance(data, dict) and "jobs" in data:
+                  return [str(j.get("location") or "") for j in data["jobs"]]
+              return None
+
+          def check(name):
+              base = name.lower()
+              slugs = list(dict.fromkeys([re.sub(r"[^a-z0-9]", "", base),
+                                          re.sub(r"[^a-z0-9]+", "-", base).strip("-")]))
+              for s in slugs:
+                  for ats, url in URLS.items():
+                      locs = locations(ats, fetch(url.format(s)))
+                      if locs is not None:
+                          india = sum(1 for l in locs if any(k in l.lower() for k in INDIA))
+                          return {"name": name, "ats": ats, "slug": s, "total": len(locs), "india": india}
+              return None
+
+          with ThreadPoolExecutor(max_workers=20) as ex:
+              results = list(ex.map(check, NAMES))
+
+          found = sorted([r for r in results if r], key=lambda r: -r["india"])
+          missing = [n for n, r in zip(NAMES, results) if not r]
+          good = [r for r in found if r["india"] > 0]
+          zero = [r["name"] for r in found if r["india"] == 0]
+
+          lines = ["VALID (India jobs found):"]
+          for r in good:
+              lines.append('{"name": "%s", "ats": "%s", "slug": "%s"},  # India %d / total %d'
+                           % (r["name"], r["ats"], r["slug"], r["india"], r["total"]))
+          lines.append("")
+          lines.append("VALID but no India jobs now: " + ", ".join(zero))
+          lines.append("")
+          lines.append("NOT FOUND: " + ", ".join(missing))
+          text = "\n".join(lines)
+          print(text)
+
+          t = os.environ["TELEGRAM_BOT_TOKEN"]
+          c = os.environ["TELEGRAM_CHAT_ID"]
+          for i in range(0, len(text), 3500):
+              data = urllib.parse.urlencode({"chat_id": c, "text": text[i:i + 3500]}).encode()
+              urllib.request.urlopen(urllib.request.Request(
+                  f"https://api.telegram.org/bot{t}/sendMessage", data=data), timeout=15)
+          EOF
