@@ -1,5 +1,5 @@
 {
- "roles": ["devops", "react.js", "frontend", "devsecops", "react.js", "cloud", "aws", "sre", "site reliability", "reliability", "platform", "kubernetes", "infrastructure", "systems engineer", "support engineer", "production engineer", "release engineer", "build engineer", "automation engineer", "trainee", "graduate", "fresher", "junior", "entry level"],
+ "roles": ["devops", "react.js", "frontend", "devsecops", "cloud", "aws", "sre", "site reliability", "reliability", "platform", "kubernetes", "infrastructure", "systems engineer", "support engineer", "production engineer", "release engineer", "build engineer", "automation engineer", "trainee", "graduate", "fresher", "junior", "entry level"],
  "exclude_titles": ["sales", "account executive", "account manager", "marketing", "recruiter", "recruiting", "talent", "legal", "counsel", "finance", "accountant", "designer", "customer success", "business development", "partnerships", "product manager", "people operations", "hr"],
  "india_only": true,
  "india_terms": ["india", "hyderabad", "bangalore", "bengaluru", "chennai", "pune", "mumbai", "delhi", "ncr", "gurgaon", "gurugram", "noida", "kolkata", "ahmedabad", "kochi", "coimbatore", "telangana", "karnataka", "maharashtra", "tamil nadu", "andhra pradesh", "ongole", "vijayawada", "visakhapatnam", "vizag", "tirupati", "thiruvananthapuram", "trivandrum", "kerala", "gujarat", "jaipur", "indore", "chandigarh", "mohali", "bhubaneswar", "nagpur", "mysuru", "mysore"],
@@ -62,6 +62,17 @@
   {"name": "Pure Storage", "ats": "greenhouse", "token": "purestorage"},
   {"name": "HighRadius", "ats": "greenhouse", "token": "highradius"},
   {"name": "Zenoti", "ats": "greenhouse", "token": "zenoti"},
-  {"name": "Snowflake", "ats": "ashby", "token": "snowflake"}
+  {"name": "Snowflake", "ats": "ashby", "token": "snowflake"},
+  {"name": "ThoughtSpot", "ats": "greenhouse", "token": "thoughtspot"},
+  {"name": "Netskope", "ats": "greenhouse", "token": "netskope"},
+  {"name": "Sumo Logic", "ats": "greenhouse", "token": "sumologic"},
+  {"name": "Workato", "ats": "greenhouse", "token": "workato"},
+  {"name": "Zendesk", "ats": "greenhouse", "token": "zendesk"},
+  {"name": "Chargebee", "ats": "greenhouse", "token": "chargebee"},
+  {"name": "HackerRank", "ats": "greenhouse", "token": "hackerrank"},
+  {"name": "Dream11", "ats": "lever", "token": "dreamsports"},
+  {"name": "Amagi", "ats": "lever", "token": "amagi"},
+  {"name": "CARS24", "ats": "lever", "token": "cars24"},
+  {"name": "Unacademy", "ats": "lever", "token": "unacademy"}
  ]
 }
