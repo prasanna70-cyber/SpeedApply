@@ -31,8 +31,8 @@ NO_REGION = re.compile(r"^\W*(remote|anywhere|global|worldwide|flexible|n/?a)?\W
 
 DEFAULT_INDIA_TERMS = [
     "india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai",
-    "mumbai", "delhi", "ncr", "gurugram", "gurgaon", "noida",
-    "kolkata", "ahmedabad",
+    "mumbai", "delhi", "ncr", "gurugram", "andhrapradesh","noida",
+    "kolkata","vishakapatnam ",
 ]
 
 # job titles that match a keyword like "cloud" but are not engineering jobs
