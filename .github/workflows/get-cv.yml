@@ -7,7 +7,7 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Get pinned CV file_id and send to Telegram
+      - name: Get CV file_id and send to Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -16,10 +16,30 @@ jobs:
           import os, json, urllib.request, urllib.parse
           t = os.environ["TELEGRAM_BOT_TOKEN"]
           c = os.environ["TELEGRAM_CHAT_ID"]
-          d = json.load(urllib.request.urlopen(f"https://api.telegram.org/bot{t}/getChat?chat_id={c}"))
-          p = d.get("result", {}).get("pinned_message", {})
-          fid = p.get("document", {}).get("file_id", "NOT FOUND")
-          print("FILE_ID:", fid)
-          data = urllib.parse.urlencode({"chat_id": c, "text": "CV FILE_ID:\n" + fid}).encode()
+
+          def api(m):
+              return json.load(urllib.request.urlopen(f"https://api.telegram.org/bot{t}/{m}"))
+
+          fid, src = None, ""
+          try:
+              p = api(f"getChat?chat_id={c}").get("result", {}).get("pinned_message", {})
+              fid = p.get("document", {}).get("file_id")
+              src = "pinned"
+          except Exception as e:
+              print("getChat failed:", e)
+          if not fid:
+              try:
+                  for u in reversed(api("getUpdates").get("result", [])):
+                      d = (u.get("message") or {}).get("document")
+                      if d:
+                          fid = d["file_id"]
+                          src = "recent upload " + d.get("file_name", "")
+                          break
+              except Exception as e:
+                  print("getUpdates failed:", e)
+
+          text = f"CV FILE_ID ({src}):\n{fid}" if fid else "NOT FOUND"
+          print(text)
+          data = urllib.parse.urlencode({"chat_id": c, "text": text}).encode()
           urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{t}/sendMessage", data=data))
           EOF
